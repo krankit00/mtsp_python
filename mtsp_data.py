@@ -11,22 +11,53 @@ import numpy as np
 # import matplotlib
 # matplotlib.use('Agg') #Using Non-interactive backend
 
-
-
-
+num_uav = 3
+num_ugv = 1
 grid_size = 3
-i_coords, j_coords = np.meshgrid(range(grid_size), range(grid_size), indexing='ij')
-coordinate_grid = np.array([i_coords, j_coords])
-# print(xlim, ylim)
 
-num_locations = 47
-num_vehicles = 4
+
 depot = [0,0]
-# start_pt = []
 
-def create_distmat(num_loc):
-    locations = []
+
+class Task:
+    def __init__(self, identity, location):
+        self.identity = identity
+        self.location = location
+        self.params = params # Quantification of the task
+
+class Agent:
+    def __init__(self, identity, location):
+        self.identity = identity
+        self.location = location
+        self.status = status # Free/Operational/Failed
+
+class Event:
+    def __init__(self, name, location):  
+        self.name = name
+        self.location = location
+
+
+def event_handler(event, locations, num_vehicles):
+    if event=="New":
+        new_x = int(input("Enter X Co-ordinate: "))
+        new_y = int(input("Enter Y Co-ordinate: "))
+        if (new_x!=0 and new_y!=0):
+            # locations = data['locations']
+            locations.append([new_x, new_y])
+            # data['locations'] = locations
+            # print(len(data['locations']))
+    if event=="Failed":
+        num_vehicles = int(input("Number of Operational Vehicles: "))
+        # data['num_vehicles'] = num_vehicles
+
+    return locations, num_vehicles
+
+def location_handler():
     # locations = [[random.randint(-grid_size,grid_size) for i in range(2)] for j in range(num_loc + 1)]
+    locations = []
+    
+    i_coords, j_coords = np.meshgrid(range(grid_size), range(grid_size), indexing='ij')
+    coordinate_grid = np.array([i_coords, j_coords])
     for i in range(grid_size):
         for j in range(grid_size):
             loc_x = 8*coordinate_grid[:, i, j][0]
@@ -46,30 +77,26 @@ def create_distmat(num_loc):
                 locations.append([loc_x, -loc_y])
                 locations.append([-loc_x, -loc_y])
 
-    # print locations
-    # print len(locations)
-
     locations[0] = depot #Depot Location
+    return locations
+
+def create_distmat(locations):
     distMat = [ [ 0 for i in range(len(locations)) ] for j in range(len(locations)) ] 
     for i in range(len(locations)):
         for j in range(len(locations)):
             dist = int(math.sqrt((locations[j][0] - locations[i][0])**2 + (locations[j][1] - locations[i][1])**2))
             distMat[i][j] = dist
-    
-    # for i in range(num_vehicles):
-        # start_pt.append([random.randint(-grid_size,grid_size), random.randint(-grid_size,grid_size)])
-        # distMat[i][i] = int(math.sqrt((start_pt[i][0] - depot[0])**2 + (start_pt[i][1] - depot[1])**2))
-    # print distMat
-    # print start_pt
-    return distMat, locations
+    return distMat
 
 
-def create_data_model():
+def create_data_model(locations, num_vehicles):
     """Stores the data for the problem."""
     data = {}
-
+    
     data['num_vehicles'] = num_vehicles
-    data['distance_matrix'], data['locations'] = create_distmat(num_locations)
+    data['distance_matrix'] = create_distmat(locations)
+    data['locations'] = locations
+    print(len(data['locations']))
     data['depot'] = 0
     return data
 
@@ -98,11 +125,36 @@ def print_solution(data, manager, routing, solution):
     print('Maximum of the route distances: {}m'.format(max_route_distance))
     return route_map
 
-def main():
+def plot_solution(data, route_map):
+    #Plotter Variable
+    plt.figure()
+    colors = ["black", "green", "red", "yellow", "blue", "cyan", "magenta", "olive", "orange", "tomato"]
+    plt.grid()
+    lim = max(max(data['distance_matrix']))
+    plt.xlim(-lim/2, lim/2) #Xlim should be the max of xLoc
+    plt.ylim(-lim/2, lim/2) #YLim should be the max of yLoc
+    plt.plot(data['locations'][0][0], data['locations'][0][1], 'x')
+    plt.text(data['locations'][0][0], data['locations'][0][1], 'Depot', fontsize='10')
+    
+    for i in range(len(route_map)-1):
+        x_values = [data['locations'][route_map[i][1]][0], data['locations'][route_map[i+1][1]][0]]
+        y_values = [data['locations'][route_map[i][1]][1], data['locations'][route_map[i+1][1]][1]]
+        # print(data['locations'][route_map[i][1]])
+        plt.scatter(data['locations'][route_map[i][1]][0], data['locations'][route_map[i][1]][1],  c=colors[route_map[i][0]])
+        plt.plot(x_values, y_values, c=colors[route_map[i][0]])
+        plt.text(data['locations'][route_map[i][1]][0], data['locations'][route_map[i][1]][1], route_map[i][1], fontsize='10')
+        plt.pause(0.05)
+    # plt.savefig('plot.png')
+    # plt.show()
+    # plt.matshow(data['distance_matrix'])
+    # plt.colorbar()
+    # plt.savefig('dist_mat.png')
+
+def mtsp_solver(data):
     """Solve the CVRP problem."""
     # Instantiate the data problem.
     start_time = datetime.now()
-    data = create_data_model()
+    
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']),
@@ -146,34 +198,21 @@ def main():
     end_time = datetime.now()
     exec_time = end_time-start_time
     print('Execution Time: %s' % (exec_time))
-
-    # Print solution on console.
-    colors = ["black", "green", "red", "yellow", "blue", "cyan", "magenta", "olive", "orange", "tomato"]
-    plt.grid()
-    lim = max(max(data['distance_matrix']))
-    plt.xlim(-lim/2, lim/2) #Xlim should be the max of xLoc
-    plt.ylim(-lim/2, lim/2) #YLim should be the max of yLoc
-    # for i in range (num_vehicles):
-    #     plt.plot(start_pt[i][0], start_pt[i][1], 'o')
-
-
-    plt.plot(data['locations'][0][0], data['locations'][0][1], 'x')
-    plt.text(data['locations'][0][0], data['locations'][0][1], 'Depot', fontsize='10')
     if solution:
         route_map = print_solution(data, manager, routing, solution)
-        for i in range(len(route_map)-1):
-           x_values = [data['locations'][route_map[i][1]][0], data['locations'][route_map[i+1][1]][0]]
-           y_values = [data['locations'][route_map[i][1]][1], data['locations'][route_map[i+1][1]][1]]
-           plt.scatter(data['locations'][route_map[i][1]][0], data['locations'][route_map[i][1]][1],  c=colors[route_map[i][0]])
-           plt.plot(x_values, y_values, c=colors[route_map[i][0]])
-           plt.text(data['locations'][route_map[i][1]][0], data['locations'][route_map[i][1]][1], route_map[i][1], fontsize='10')
-           plt.pause(0.05)
-    plt.savefig('plot.png')
-    # plt.show()
-    plt.matshow(data['distance_matrix'])
-    plt.colorbar()
-    # plt.show()
-    plt.savefig('dist_mat.png')
+    return route_map
+
+def main():
+    for i in range(3):
+        locations = location_handler()
+        num_vehicles = num_uav + num_ugv
+        event_type = str(input("Type of event: [No/New/Failed] : "))
+        locations, num_vehicles = event_handler(event_type, locations, num_vehicles)
+        data = create_data_model(locations, num_vehicles)
+        route_map = mtsp_solver(data)
+        plot_solution(data, route_map)
+    
+    input("Press [Enter] to Exit!")
 
 
 
